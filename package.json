@@ -1,7 +1,8 @@
 {
   "name": "youtube-metadata-service",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
