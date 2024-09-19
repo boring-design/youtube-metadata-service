@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
-import { Client, MixPlaylist, Playlist } from "youtubei";
+import { Client, MixPlaylist, Playlist, Video } from "youtubei";
 
 function parseDurationToSeconds(duration: string): number {
   const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
@@ -97,20 +97,44 @@ app.get('/playlist', async (c) => {
     const playlist = await youtube.getPlaylist(listId)
 
     if (playlist instanceof MixPlaylist) {
+      let videoIndexInPlaylist = playlist.videos.findIndex(v => v.id === videoId);
+      let videos = playlist.videos.map((video) => ({
+        title: video.title,
+        author: video.channel?.name,
+        videoId: video.id,
+        thumbnail: video.thumbnails[video.thumbnails.length-1].url,
+        durationInSeconds: video.duration,
+      }));
+
+      if (videoId && videoIndexInPlaylist === -1) {
+        try {
+          const videoInfo = await youtube.getVideo(videoId);
+          if (videoInfo) {
+            const newVideo = {
+              title: videoInfo.title,
+              author: videoInfo.channel?.name,
+              videoId: videoInfo.id,
+              thumbnail: videoInfo.thumbnails[videoInfo.thumbnails.length-1].url,
+              durationInSeconds: (videoInfo as Video).duration,
+            };
+            videos = [newVideo, ...videos];
+            videoIndexInPlaylist = 0;
+          }
+        } catch (error) {
+          console.error('Error fetching video info:', error);
+        }
+      }
+
       return c.json({
         title: playlist.title,
-        videoCount: playlist.videoCount,
-        videos: playlist.videos.map((video) => ({
-          title: video.title,
-          author: video.channel?.name,
-          videoId: video.id,
-          thumbnail: video.thumbnails[video.thumbnails.length-1].url,
-          durationInSeconds: video.duration,
-        })),
-      })
+        videoIndexInPlaylist: videoIndexInPlaylist !== -1 ? videoIndexInPlaylist : null,
+        videoCount: videos.length,
+        videos: videos,
+      });
     } else if (playlist instanceof Playlist) {
       return c.json({
         title: playlist.title,
+        videoIndexInPlaylist: videoId ? playlist.videos.items.findIndex(v => v.id === videoId) : null,
         videoCount: playlist.videoCount,
         videos: playlist.videos.items.map((video) => ({
           title: video.title,
