@@ -76,6 +76,7 @@ const youtube = new Client()
 
 app.get('/playlist', async (c) => {
   const url = c.req.query('url')
+  const apiKey = env<{ YOUTUBE_API_KEY: string }>(c).YOUTUBE_API_KEY
 
   if (!url) {
     return c.json({ error: 'Missing URL parameter' }, 400)
@@ -108,20 +109,21 @@ app.get('/playlist', async (c) => {
 
       if (videoId && videoIndexInPlaylist === -1) {
         try {
-          const videoInfo = await youtube.getVideo(videoId);
-          if (videoInfo) {
+          const videoResponse = await axios.get(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${apiKey}`)
+          const videoData = videoResponse.data.items[0]
+          if (videoData) {
             const newVideo = {
-              title: videoInfo.title,
-              author: videoInfo.channel?.name,
-              videoId: videoInfo.id,
-              thumbnail: videoInfo.thumbnails[videoInfo.thumbnails.length-1].url,
-              durationInSeconds: (videoInfo as Video).duration,
-            };
-            videos = [newVideo, ...videos];
-            videoIndexInPlaylist = 0;
+              title: videoData.snippet.title,
+              author: videoData.snippet.channelTitle,
+              videoId: videoData.id,
+              thumbnail: videoData.snippet.thumbnails.maxres?.url || videoData.snippet.thumbnails.high?.url,
+              durationInSeconds: parseDurationToSeconds(videoData.contentDetails.duration),
+            }
+            videos = [newVideo, ...videos]
+            videoIndexInPlaylist = 0
           }
         } catch (error) {
-          console.error('Error fetching video info:', error);
+          console.error('Error fetching video info:', error)
         }
       }
 
@@ -132,17 +134,41 @@ app.get('/playlist', async (c) => {
         videos: videos,
       });
     } else if (playlist instanceof Playlist) {
+      let videos = playlist.videos.items.map((video) => ({
+        title: video.title,
+        author: video.channel?.name,
+        videoId: video.id,
+        thumbnail: video.thumbnails[video.thumbnails.length-1].url,
+        durationInSeconds: video.duration,
+      }));
+
+      let videoIndexInPlaylist = videos.findIndex(v => v.videoId === videoId);
+
+      if (videoId && videoIndexInPlaylist === -1) {
+        try {
+          const videoResponse = await axios.get(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${apiKey}`)
+          const videoData = videoResponse.data.items[0]
+          if (videoData) {
+            const newVideo = {
+              title: videoData.snippet.title,
+              author: videoData.snippet.channelTitle,
+              videoId: videoData.id,
+              thumbnail: videoData.snippet.thumbnails.maxres?.url || videoData.snippet.thumbnails.high?.url,
+              durationInSeconds: parseDurationToSeconds(videoData.contentDetails.duration),
+            }
+            videos = [newVideo, ...videos]
+            videoIndexInPlaylist = 0
+          }
+        } catch (error) {
+          console.error('Error fetching video info:', error)
+        }
+      }
+
       return c.json({
         title: playlist.title,
-        videoIndexInPlaylist: videoId ? playlist.videos.items.findIndex(v => v.id === videoId) : null,
+        videoIndexInPlaylist: videoIndexInPlaylist !== -1 ? videoIndexInPlaylist : null,
         videoCount: playlist.videoCount,
-        videos: playlist.videos.items.map((video) => ({
-          title: video.title,
-          author: video.channel?.name,
-          videoId: video.id,
-          thumbnail: video.thumbnails[video.thumbnails.length-1].url,
-          durationInSeconds: video.duration,
-        })),
+        videos: videos,
       })
     } else {
       return c.json({ error: 'Playlist not found or invalid' }, 404)
