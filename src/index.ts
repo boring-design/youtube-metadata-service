@@ -2,6 +2,7 @@ import axios from 'axios';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
 import { Client, MixPlaylist, Playlist, Video } from "youtubei";
+import { cors } from 'hono/cors';
 
 function parseDurationToSeconds(duration: string): number {
   const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
@@ -178,5 +179,16 @@ app.get('/playlist', async (c) => {
     return c.json({ error: 'Error fetching playlist metadata' }, 500)
   }
 })
+
+app.get('/iframe_api', cors({ origin: '*' }), async (c) => {
+  const response = await fetch('https://www.youtube.com/iframe_api');
+  const body = await response.text();
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'application/javascript',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+});
 
 export default app
