@@ -29,20 +29,6 @@ function parseDurationToSeconds(duration: string): number {
   return hours * 3600 + minutes * 60 + seconds
 }
 
-async function fetchYouTubeMusicThumbnail(videoId: string) {
-  const musicClient = new MusicClient();
-  try {
-    const youtubeiResponse = await musicClient.http.post("/youtubei/v1/player", {
-      data: { "videoId": videoId }
-    });
-    console.log("youtubeiResponse", youtubeiResponse);
-    const youtubeiThumbnails = youtubeiResponse.data.videoDetails.thumbnail.thumbnails as { url: string, width: number, height: number }[];
-    return youtubeiThumbnails.reduce((max, current) => max.width > current.width ? max : current, youtubeiThumbnails[0]);
-  } catch (error) {
-    console.error('Error fetching YouTube Music thumbnail:', error);
-    return null;
-  }
-}
 
 async function getVideoData(videoId: string, apiKey: string) {
   const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoId}&key=${apiKey}`;
@@ -53,8 +39,6 @@ async function getVideoData(videoId: string, apiKey: string) {
     throw new Error('Video not found');
   }
 
-  const thumbnail = await fetchYouTubeMusicThumbnail(videoId);
-
   return {
     videoId,
     title: videoData.snippet.title,
@@ -64,7 +48,7 @@ async function getVideoData(videoId: string, apiKey: string) {
     viewCount: videoData.statistics.viewCount,
     likeCount: videoData.statistics.likeCount,
     commentCount: videoData.statistics.commentCount,
-    thumbnail: thumbnail.url,
+    thumbnail: videoData.snippet.thumbnails.high.url,
     author: videoData.snippet.channelTitle,
     durationInSeconds: parseDurationToSeconds(videoData.contentDetails.duration),
   };
@@ -202,14 +186,6 @@ app.get('/playlist', async (c) => {
     } else {
       return c.json({ error: 'Playlist not found or invalid' }, 404)
     }
-
-
-    // patch thumbnail       
-    result.videos = await Promise.all(result.videos.map(async (video) => {
-      const thumbnail = await fetchYouTubeMusicThumbnail(video.videoId);
-      console.log("new thumbnail", thumbnail);
-      return { ...video, thumbnail: thumbnail.url, }
-    }))
 
     return c.json(result);
   } catch (error) {
