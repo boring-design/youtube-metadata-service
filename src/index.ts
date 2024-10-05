@@ -31,11 +31,17 @@ function parseDurationToSeconds(duration: string): number {
 
 async function fetchYouTubeMusicThumbnail(videoId: string) {
   const musicClient = new MusicClient();
-  const youtubeiResponse = await musicClient.http.post("/youtubei/v1/player", {
-    data: { "videoId": videoId }
-  });
-  const youtubeiThumbnails = youtubeiResponse.data.videoDetails.thumbnail.thumbnails as { url: string, width: number, height: number }[];
-  return youtubeiThumbnails.reduce((max, current) => max.width > current.width ? max : current, youtubeiThumbnails[0]);
+  try {
+    const youtubeiResponse = await musicClient.http.post("/youtubei/v1/player", {
+      data: { "videoId": videoId }
+    });
+    console.log("youtubeiResponse", youtubeiResponse);
+    const youtubeiThumbnails = youtubeiResponse.data.videoDetails.thumbnail.thumbnails as { url: string, width: number, height: number }[];
+    return youtubeiThumbnails.reduce((max, current) => max.width > current.width ? max : current, youtubeiThumbnails[0]);
+  } catch (error) {
+    console.error('Error fetching YouTube Music thumbnail:', error);
+    return null;
+  }
 }
 
 async function getVideoData(videoId: string, apiKey: string) {
@@ -204,7 +210,6 @@ app.get('/playlist', async (c) => {
       console.log("new thumbnail", thumbnail);
       return { ...video, thumbnail: thumbnail.url, }
     }))
-
 
     return c.json(result);
   } catch (error) {
