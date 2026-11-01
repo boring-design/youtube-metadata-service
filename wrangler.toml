@@ -1,0 +1,9 @@
+name = "youtube-metadata-service"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "b5d56464757c0401d2197c453df801f1"
+workers_dev = true
+
+[alias]
+"node-fetch" = "./src/workers/node-fetch.ts"

@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
 import { Client, MixPlaylist, MusicClient, Playlist, Video } from "youtubei";
@@ -32,8 +31,12 @@ function parseDurationToSeconds(duration: string): number {
 
 async function getVideoData(videoId: string, apiKey: string) {
   const apiUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoId}&key=${apiKey}`;
-  const response = await axios.get(apiUrl);
-  const videoData = response.data.items[0];
+  const response = await fetch(apiUrl);
+  if (!response.ok) {
+    throw new Error(`YouTube API error: ${response.status}`);
+  }
+  const data = await response.json() as { items: any[] };
+  const videoData = data.items[0];
 
   if (!videoData) {
     throw new Error('Video not found');
