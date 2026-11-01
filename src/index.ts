@@ -1,21 +1,6 @@
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
-import { Client, MixPlaylist, MusicClient, Playlist, Video } from "youtubei";
 import { cors } from 'hono/cors';
-
-// Add this interface near the top of the file, after the imports
-interface PlaylistResult {
-  title: string;
-  videoIndexInPlaylist: number | null;
-  videoCount: number;
-  videos: Array<{
-    title: string;
-    author?: string;
-    videoId: string;
-    thumbnail: string;
-    durationInSeconds: number;
-  }>;
-}
 
 function parseDurationToSeconds(duration: string): number {
   const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/)
@@ -90,110 +75,6 @@ app.get('/video', async (c) => {
   } catch (error) {
     console.error('Error fetching video metadata:', error);
     return c.json({ error: 'Error fetching video metadata' }, 500);
-  }
-})
-
-const youtube = new Client()
-
-app.get('/playlist', async (c) => {
-  const url = c.req.query('url')
-  const apiKey = env<{ YOUTUBE_API_KEY: string }>(c).YOUTUBE_API_KEY
-
-  if (!url) {
-    return c.json({ error: 'Missing URL parameter' }, 400)
-  }
-
-  try {
-    const parsedUrl = new URL(url)
-    if (!parsedUrl.hostname.endsWith('youtube.com')) {
-      return c.json({ error: 'Invalid URL. Please provide a YouTube URL' }, 400)
-    }
-
-    const videoId = parsedUrl.searchParams.get('v')
-    const listId = parsedUrl.searchParams.get('list')
-
-    if (!listId) {
-      return c.json({ error: 'Invalid YouTube URL. Missing playlist ID' }, 400)
-    }
-
-    const playlist = await youtube.getPlaylist(listId)
-
-    type PlaylistResult = {
-      title: string;
-      videoIndexInPlaylist: number | null;
-      videoCount: number;
-      videos: Array<{
-        title: string;
-        author?: string;
-        videoId: string;
-        thumbnail: string;
-        durationInSeconds: number | null;
-      }>;
-    };
-
-    let result: PlaylistResult;
-
-    if (playlist instanceof MixPlaylist) {
-      let videoIndexInPlaylist = playlist.videos.findIndex(v => v.id === videoId);
-      let videos = playlist.videos.map((video) => ({
-        title: video.title,
-        author: video.channel?.name,
-        videoId: video.id,
-        thumbnail: video.thumbnails[video.thumbnails.length - 1].url,
-        durationInSeconds: video.duration,
-      }));
-
-      if (videoId && videoIndexInPlaylist === -1) {
-        try {
-          const newVideo = await getVideoData(videoId, apiKey);
-          videos = [newVideo, ...videos];
-          videoIndexInPlaylist = 0;
-        } catch (error) {
-          console.error('Error fetching video info:', error);
-        }
-      }
-
-      result = {
-        title: playlist.title,
-        videoIndexInPlaylist: videoIndexInPlaylist !== -1 ? videoIndexInPlaylist : null,
-        videoCount: videos.length,
-        videos: videos,
-      };
-    } else if (playlist instanceof Playlist) {
-      let videos = playlist.videos.items.map((video) => ({
-        title: video.title,
-        author: video.channel?.name,
-        videoId: video.id,
-        thumbnail: video.thumbnails[video.thumbnails.length - 1].url,
-        durationInSeconds: video.duration,
-      }));
-
-      let videoIndexInPlaylist = videos.findIndex(v => v.videoId === videoId);
-
-      if (videoId && videoIndexInPlaylist === -1) {
-        try {
-          const newVideo = await getVideoData(videoId, apiKey);
-          videos = [newVideo, ...videos];
-          videoIndexInPlaylist = 0;
-        } catch (error) {
-          console.error('Error fetching video info:', error);
-        }
-      }
-
-      result = {
-        title: playlist.title,
-        videoIndexInPlaylist: videoIndexInPlaylist !== -1 ? videoIndexInPlaylist : null,
-        videoCount: playlist.videoCount,
-        videos: videos,
-      };
-    } else {
-      return c.json({ error: 'Playlist not found or invalid' }, 404)
-    }
-
-    return c.json(result);
-  } catch (error) {
-    console.error('Error fetching playlist metadata:', error)
-    return c.json({ error: 'Error fetching playlist metadata' }, 500)
   }
 })
 
