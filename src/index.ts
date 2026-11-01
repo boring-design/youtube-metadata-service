@@ -54,6 +54,72 @@ async function getVideoData(videoId: string, apiKey: string) {
   };
 }
 
+// Regular playlists come from the official YouTube Data API. YouTube changed
+// the format of its internal web API, and youtubei can no longer read the
+// videos of a regular playlist. Mix playlists (id starts with "RD") have no
+// official API, so they still use youtubei.
+const PLAYLIST_PAGE_SIZE = 50;
+const PLAYLIST_MAX_PAGES = 4;
+
+async function getPlaylistData(listId: string, videoId: string | null, apiKey: string) {
+  const api = 'https://www.googleapis.com/youtube/v3';
+  const playlistResponse = await axios.get(`${api}/playlists?part=snippet,contentDetails&id=${listId}&key=${apiKey}`);
+  const playlist = playlistResponse.data.items[0];
+  if (!playlist) {
+    return null;
+  }
+
+  const videoIds: string[] = [];
+  let pageToken = '';
+  for (let page = 0; page < PLAYLIST_MAX_PAGES; page++) {
+    const itemsResponse = await axios.get(`${api}/playlistItems?part=contentDetails&maxResults=${PLAYLIST_PAGE_SIZE}&playlistId=${listId}&key=${apiKey}${pageToken ? `&pageToken=${pageToken}` : ''}`);
+    videoIds.push(...itemsResponse.data.items.map((item: any) => item.contentDetails.videoId));
+    pageToken = itemsResponse.data.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  // Private and deleted videos are not returned here, so they are left out.
+  const videosById = new Map<string, any>();
+  for (let i = 0; i < videoIds.length; i += PLAYLIST_PAGE_SIZE) {
+    const ids = videoIds.slice(i, i + PLAYLIST_PAGE_SIZE).join(',');
+    const videosResponse = await axios.get(`${api}/videos?part=snippet,contentDetails&id=${ids}&key=${apiKey}`);
+    for (const video of videosResponse.data.items) {
+      videosById.set(video.id, video);
+    }
+  }
+
+  let videos = videoIds.filter((id) => videosById.has(id)).map((id) => {
+    const video = videosById.get(id);
+    const thumbnails = video.snippet.thumbnails;
+    const thumbnail = thumbnails.maxres ?? thumbnails.standard ?? thumbnails.high ?? thumbnails.medium ?? thumbnails.default;
+    return {
+      title: video.snippet.title,
+      author: video.snippet.channelTitle,
+      videoId: id,
+      thumbnail: thumbnail.url,
+      durationInSeconds: parseDurationToSeconds(video.contentDetails.duration),
+    };
+  });
+
+  let videoIndexInPlaylist = videos.findIndex((v) => v.videoId === videoId);
+  if (videoId && videoIndexInPlaylist === -1) {
+    try {
+      const newVideo = await getVideoData(videoId, apiKey);
+      videos = [newVideo, ...videos];
+      videoIndexInPlaylist = 0;
+    } catch (error) {
+      console.error('Error fetching video info:', error);
+    }
+  }
+
+  return {
+    title: playlist.snippet.title,
+    videoIndexInPlaylist: videoIndexInPlaylist !== -1 ? videoIndexInPlaylist : null,
+    videoCount: playlist.contentDetails.itemCount,
+    videos,
+  };
+}
+
 const app = new Hono()
 
 app.get('/', (c) => {
@@ -111,6 +177,14 @@ app.get('/playlist', async (c) => {
 
     if (!listId) {
       return c.json({ error: 'Invalid YouTube URL. Missing playlist ID' }, 400)
+    }
+
+    if (!listId.startsWith('RD')) {
+      const result = await getPlaylistData(listId, videoId, apiKey)
+      if (!result) {
+        return c.json({ error: 'Playlist not found or invalid' }, 404)
+      }
+      return c.json(result)
     }
 
     const playlist = await youtube.getPlaylist(listId)
